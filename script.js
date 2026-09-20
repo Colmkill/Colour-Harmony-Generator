@@ -145,32 +145,25 @@
   }
 
   // Turns the mouse position plus the current mode/direction/distance into
-  // a full list of colour objects. The primary point sits exactly at the
-  // mouse; each secondary point is placed `distance` pixels from the mouse
-  // at its layout angle, then its colour is *sampled* from the wheel at
-  // that exact pixel — so the swatch always matches what's drawn under the
-  // marker, and dragging the sliders always lands on a real, predictable
-  // colour (including green) instead of a formula-derived one that can
-  // drift away from the visible wheel.
+  // a full list of colour objects. The mouse is a pure pivot — every point,
+  // including the first, sits `distance` pixels out from it at its layout
+  // angle, so a triad renders as a triangle centred on the mouse and a
+  // quad as a square centred on it. Each point's colour is then *sampled*
+  // from the wheel at that exact pixel — so the swatch always matches
+  // what's drawn under the marker, and dragging the sliders always lands
+  // on a real, predictable colour (including green) instead of a
+  // formula-derived one that can drift away from the visible wheel.
   function calculateHarmonyPoints(mouseX, mouseY, lightness, mode, directionOffset, distance) {
     const layoutAngles = mode === "quad" ? calculateQuad(directionOffset) : calculateTriad(directionOffset);
     const maxX = wheelCanvas.width;
     const maxY = wheelCanvas.height;
 
     return layoutAngles.map((angle, i) => {
-      let x, y;
-
-      if (i === 0) {
-        // Primary point: exactly where the mouse is.
-        x = mouseX;
-        y = mouseY;
-      } else {
-        const rad = (angle * Math.PI) / 180;
-        // Clamp to the canvas bounds so a point near the edge can't sample
-        // outside the wheel and produce an undefined colour.
-        x = Math.min(Math.max(mouseX + Math.cos(rad) * distance, 0), maxX);
-        y = Math.min(Math.max(mouseY + Math.sin(rad) * distance, 0), maxY);
-      }
+      const rad = (angle * Math.PI) / 180;
+      // Clamp to the canvas bounds so a point near the edge can't sample
+      // outside the wheel and produce an undefined colour.
+      const x = Math.min(Math.max(mouseX + Math.cos(rad) * distance, 0), maxX);
+      const y = Math.min(Math.max(mouseY + Math.sin(rad) * distance, 0), maxY);
 
       const { hue, sat } = getColourFromWheelPosition(x, y, wheelCanvas);
 
@@ -233,18 +226,23 @@
   // Draws the primary + harmony markers over the wheel on every update.
   // Kept on a separate canvas layer so we never repaint the (expensive)
   // wheel gradient itself during interaction.
-  function drawMarkers(colours) {
+  function drawMarkers(colours, mouseX, mouseY) {
     markerCtx.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
 
-    colours.forEach((c, i) => {
-      const isPrimary = i === 0;
-      const r = isPrimary ? 9 : 7;
+    // Pivot dot: marks the mouse position itself, which is no longer one
+    // of the colour points now every harmony point sits on the distance
+    // circle around it.
+    markerCtx.beginPath();
+    markerCtx.arc(mouseX, mouseY, 4, 0, Math.PI * 2);
+    markerCtx.fillStyle = "rgba(245, 243, 239, 0.85)";
+    markerCtx.fill();
 
+    colours.forEach((c) => {
       markerCtx.beginPath();
-      markerCtx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      markerCtx.arc(c.x, c.y, 8, 0, Math.PI * 2);
       markerCtx.fillStyle = c.hex;
       markerCtx.fill();
-      markerCtx.lineWidth = isPrimary ? 3 : 2;
+      markerCtx.lineWidth = 2;
       markerCtx.strokeStyle = "#f5f3ef";
       markerCtx.stroke();
 
@@ -413,7 +411,7 @@
       state.pointDistance
     );
 
-    drawMarkers(currentColours);
+    drawMarkers(currentColours, state.mouseX, state.mouseY);
     updatePreview(currentColours);
     updateColourInformation(currentColours);
     cssOutputEl.textContent = generateCSS(currentColours, state.gradientType, state.direction);
