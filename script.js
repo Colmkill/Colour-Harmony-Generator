@@ -125,43 +125,54 @@
 
   // Triad: three colours, 120° apart by default. `spread` scales that
   // separation so the relationship can be tightened or widened later.
-  function calculateTriad(hue, spread) {
-    const step = HARMONY_BASE_SEPARATION.triad * spread;
-    return [hue, hue + step, hue + step * 2].map((h) => ((h % 360) + 360) % 360);
-  }
+function calculateTriad(hue) {
+  return [
+    hue,
+    hue + 120,
+    hue + 240
+  ].map((h) => ((h % 360) + 360) % 360);
+}
 
-  // Quad: four colours built from two complementary pairs, 90° apart by
-  // default (a conventional "tetradic" relationship).
-  function calculateQuad(hue, spread) {
-    const step = HARMONY_BASE_SEPARATION.quad * spread;
-    return [hue, hue + step, hue + step * 2, hue + step * 3].map(
-      (h) => ((h % 360) + 360) % 360
-    );
-  }
+function calculateQuad(hue) {
+  return [
+    hue,
+    hue + 90,
+    hue + 180,
+    hue + 270
+  ].map((h) => ((h % 360) + 360) % 360);
+}
 
   // Turns a base hue/sat/lightness plus the current mode into a full list
   // of colour objects, each carrying its hue and wheel marker position.
-  function calculateHarmonyPoints(hue, sat, lightness, mode, spread) {
-    const hues = mode === "quad" ? calculateQuad(hue, spread) : calculateTriad(hue, spread);
+function calculateHarmonyPoints(hue, sat, lightness, mode) {
+  const hues = mode === "quad"
+    ? calculateQuad(hue)
+    : calculateTriad(hue);
 
-    const radius = wheelCanvas.width / 2;
-    const cx = radius;
-    const cy = radius;
-    const distFromCentre = (sat / 100) * radius;
+  const radius = wheelCanvas.width / 2;
+  const cx = radius;
+  const cy = radius;
 
-    return hues.map((h, i) => {
-      const rad = (h * Math.PI) / 180;
-      return {
-        index: i + 1,
-        hue: h,
-        sat,
-        lightness,
-        hex: hslToHex(h, sat, lightness),
-        x: cx + Math.cos(rad) * distFromCentre,
-        y: cy + Math.sin(rad) * distFromCentre
-      };
-    });
-  }
+  // For now, every harmony point sits at the same
+  // radial distance from the centre of the colour wheel
+  // as the mouse-selected colour.
+  const distFromCentre = (sat / 100) * radius;
+
+  return hues.map((h, i) => {
+    const rad = (h * Math.PI) / 180;
+
+    return {
+      index: i + 1,
+      hue: h,
+      sat,
+      lightness,
+      hex: hslToHex(h, sat, lightness),
+
+      x: cx + Math.cos(rad) * distFromCentre,
+      y: cy + Math.sin(rad) * distFromCentre
+    };
+  });
+}
 
   /* ----------------------------------------------------------------------
      Wheel rendering
@@ -386,7 +397,7 @@
       state.sat,
       state.lightness,
       state.mode,
-      state.spread
+      
     );
 
     drawMarkers(currentColours);
