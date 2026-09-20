@@ -53,7 +53,7 @@
     sat: 55,              // 0-100, distance from wheel centre
     lightness: 55,         // fixed per-colour base lightness
     mode: "triad",          // "triad" | "quad"
-    spread: 1.0,             // multiplier on the default angular separation
+    harmonyDistance: 40,            // multiplier on the default angular separation
     gradientType: "linear",   // "linear" | "radial" | "conic"
     direction: 135,             // degrees, linear/conic gradients
     animation: {
@@ -149,16 +149,24 @@ function calculateHarmonyPoints(hue, sat, lightness, mode) {
     ? calculateQuad(hue)
     : calculateTriad(hue);
 
-  const radius = wheelCanvas.width / 2;
-  const cx = radius;
-  const cy = radius;
-
-  // For now, every harmony point sits at the same
-  // radial distance from the centre of the colour wheel
-  // as the mouse-selected colour.
-  const distFromCentre = (sat / 100) * radius;
+  const anchorX = state.mouseX;
+  const anchorY = state.mouseY;
+  const distance = state.harmonyDistance;
 
   return hues.map((h, i) => {
+    // The first colour stays exactly at the mouse position.
+    if (i === 0) {
+      return {
+        index: i + 1,
+        hue: h,
+        sat,
+        lightness,
+        hex: hslToHex(h, sat, lightness),
+        x: anchorX,
+        y: anchorY
+      };
+    }
+
     const rad = (h * Math.PI) / 180;
 
     return {
@@ -168,8 +176,9 @@ function calculateHarmonyPoints(hue, sat, lightness, mode) {
       lightness,
       hex: hslToHex(h, sat, lightness),
 
-      x: cx + Math.cos(rad) * distFromCentre,
-      y: cy + Math.sin(rad) * distFromCentre
+      // Place harmony colours around the mouse.
+      x: anchorX + Math.cos(rad) * distance,
+      y: anchorY + Math.sin(rad) * distance
     };
   });
 }
@@ -421,10 +430,13 @@ function calculateHarmonyPoints(hue, sat, lightness, mode) {
   }
 
   function handleWheelPoint(clientX, clientY) {
-    const { x, y } = wheelPointFromEvent(clientX, clientY);
-    const { hue, sat } = getColourFromWheelPosition(x, y, wheelCanvas);
-    state.hue = hue;
-    state.sat = sat;
+ const { x, y } = wheelPointFromEvent(clientX, clientY);
+const { hue, sat } = getColourFromWheelPosition(x, y, wheelCanvas);
+
+state.mouseX = x;
+state.mouseY = y;
+state.hue = hue;
+state.sat = sat;
 
     if (!state.hasInteracted) {
       state.hasInteracted = true;
@@ -489,12 +501,11 @@ function calculateHarmonyPoints(hue, sat, lightness, mode) {
      Spread slider (60% - 170%, mapped to a 0.3-1.7 multiplier)
      -------------------------------------------------------------------- */
 
-  spreadRange.addEventListener("input", () => {
-    const percent = Number(spreadRange.value);
-    state.spread = percent / 100;
-    spreadValueEl.textContent = `${percent}%`;
-    render();
-  });
+spreadRange.addEventListener("input", () => {
+  state.harmonyDistance = Number(spreadRange.value);
+  spreadValueEl.textContent = `${state.harmonyDistance}px`;
+  render();
+});
 
   /* ----------------------------------------------------------------------
      Gradient type + direction
