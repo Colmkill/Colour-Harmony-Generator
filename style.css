@@ -190,7 +190,7 @@ body {
 }
 
 /* Animated state: gentle hue drift so static vs. animated is obviously different */
-.tile.is-animating {
+.tile.is-animating-drift {
   animation-name: hueDrift;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
@@ -204,9 +204,55 @@ body {
   to   { filter: hue-rotate(360deg) saturate(1); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tile.is-animating { animation: none; }
+/* Points animation: no gradient image, so the animated background-colour
+   set by the JS-generated @keyframes rule (see #pointsKeyframesStyle) is
+   what's visible. */
+.tile.is-animating-points {
+  background-image: none;
+  animation-name: pointsCycle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-duration: var(--anim-duration, 6s);
+  animation-direction: var(--anim-direction, normal);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile.is-animating-drift:not(.force-motion),
+  .tile.is-animating-points:not(.force-motion) { animation: none; }
+}
+
+.reduced-motion-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--panel-border-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: -6px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reduced-motion-note[hidden] {
+  display: none;
+}
+
+.force-motion-btn {
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: var(--track);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  flex-shrink: 0;
+}
+
+.force-motion-btn:hover { border-color: var(--thumb); }
 
 /* ---------------------------------------------------------------------- */
 /* Controls                                                                */
