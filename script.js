@@ -32,6 +32,8 @@
   const dialNeedle      = document.getElementById("dialNeedle");
 
   const animToggle      = document.getElementById("animToggle");
+  const reducedMotionNote = document.getElementById("reducedMotionNote");
+  const forceMotionBtn  = document.getElementById("forceMotionBtn");
   const btnAnimDrift    = document.getElementById("btnAnimDrift");
   const btnAnimPoints   = document.getElementById("btnAnimPoints");
   const speedRange      = document.getElementById("speedRange");
@@ -75,7 +77,8 @@
       enabled: false,
       style: "drift",  // "drift" (hue-rotate filter) | "points" (cycle through harmony colours)
       speed: 8,     // 1 (slow) - 20 (fast)
-      forward: true
+      forward: true,
+      forceMotion: false  // user's explicit override of the OS reduced-motion setting
     },
     hasInteracted: false
   };
@@ -336,6 +339,11 @@
     );
 
     const usingPoints = state.animation.enabled && state.animation.style === "points";
+
+    previewTile.classList.toggle("force-motion", state.animation.forceMotion);
+
+    const systemReducesMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    reducedMotionNote.hidden = !(state.animation.enabled && systemReducesMotion && !state.animation.forceMotion);
 
     if (usingPoints) {
       // Keep the keyframes fresh with the current harmony colours, then let
@@ -654,6 +662,11 @@
     state.animation.enabled = !state.animation.enabled;
     animToggle.setAttribute("aria-checked", String(state.animation.enabled));
     animToggle.querySelector(".toggle-text").textContent = state.animation.enabled ? "On" : "Off";
+    render();
+  });
+
+  forceMotionBtn.addEventListener("click", () => {
+    state.animation.forceMotion = true;
     render();
   });
 
