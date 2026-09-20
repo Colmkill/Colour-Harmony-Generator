@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colour Harmony Generator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <h1>Colour Harmony Generator</h1>
+    <p class="app-subtitle">Move the mouse across the wheel. Watch the harmony follow.</p>
+  </header>
+
+  <main class="app-grid">
+
+    <!-- ============ WHEEL PANEL ============ -->
+    <section class="panel wheel-panel" aria-label="Colour wheel">
+      <div class="panel-label">Wheel</div>
+      <div class="wheel-stage">
+        <canvas id="colourWheel" width="420" height="420" role="img"
+                aria-label="Interactive colour wheel. Move the mouse or drag to select a base colour."></canvas>
+        <canvas id="markerLayer" width="420" height="420"></canvas>
+      </div>
+      <p class="wheel-hint" id="wheelHint">Hover or touch the wheel to begin</p>
+    </section>
+
+    <!-- ============ PREVIEW PANEL ============ -->
+    <section class="panel preview-panel" aria-label="Live colour preview">
+      <div class="panel-label">Live preview</div>
+      <div class="tile-stage">
+        <div class="tile" id="previewTile">
+          <span class="tile-placeholder">Move the mouse over the wheel</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HARMONY + SPREAD CONTROLS ============ -->
+    <section class="panel controls-panel harmony-panel" aria-label="Harmony controls">
+      <div class="panel-label">Harmony</div>
+
+      <div class="control-row">
+        <span class="control-name" id="harmonyLabel">Relationship</span>
+        <div class="segmented" role="group" aria-labelledby="harmonyLabel">
+          <button type="button" class="segmented-btn is-active" id="btnTriad" data-mode="triad" aria-pressed="true">Triad</button>
+          <button type="button" class="segmented-btn" id="btnQuad" data-mode="quad" aria-pressed="false">Quad</button>
+        </div>
+      </div>
+
+      <div class="control-row">
+        <label class="control-name" for="pointDirectionRange">Point direction</label>
+        <input type="range" id="pointDirectionRange" min="0" max="360" value="0" step="1"
+               aria-describedby="pointDirectionValue">
+        <span class="control-value" id="pointDirectionValue">0°</span>
+      </div>
+
+      <div class="control-row">
+        <label class="control-name" for="spreadRange">Point distance</label>
+        <input type="range" id="spreadRange" min="10" max="180" value="100" step="1"
+               aria-describedby="spreadValue">
+        <span class="control-value" id="spreadValue">100px</span>
+      </div>
+    </section>
+
+    <!-- ============ GRADIENT CONTROLS ============ -->
+    <section class="panel controls-panel gradient-panel" aria-label="Gradient controls">
+      <div class="panel-label">Gradient</div>
+
+      <div class="control-row">
+        <label class="control-name" for="gradientType">Type</label>
+        <select id="gradientType">
+          <option value="linear" selected>Linear</option>
+          <option value="radial">Radial</option>
+          <option value="conic">Conic</option>
+        </select>
+      </div>
+
+      <div class="control-row" id="directionRow">
+        <label class="control-name" for="directionRange">Direction</label>
+        <input type="range" id="directionRange" min="0" max="360" value="135" step="1"
+               aria-describedby="directionValue">
+        <span class="control-value" id="directionValue">135°</span>
+      </div>
+
+      <div class="control-row" id="dialRow">
+        <span class="control-name">Dial</span>
+        <div class="direction-dial-wrap">
+          <svg id="directionDial" class="direction-dial" viewBox="0 0 100 100" role="slider"
+               aria-label="Gradient direction dial" tabindex="0"
+               aria-valuemin="0" aria-valuemax="360" aria-valuenow="135">
+            <circle cx="50" cy="50" r="44" class="dial-track"></circle>
+            <line id="dialNeedle" x1="50" y1="50" x2="50" y2="10" class="dial-needle"></line>
+            <circle cx="50" cy="50" r="4" class="dial-hub"></circle>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ANIMATION CONTROLS ============ -->
+    <section class="panel controls-panel anim-panel" aria-label="Animation controls">
+      <div class="panel-label">Animation</div>
+
+      <div class="control-row">
+        <span class="control-name" id="animLabel">Motion</span>
+        <button type="button" class="toggle-btn" id="animToggle" role="switch" aria-checked="false"
+                aria-labelledby="animLabel">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">Off</span>
+        </button>
+      </div>
+
+      <div class="control-row">
+        <label class="control-name" for="speedRange">Speed</label>
+        <input type="range" id="speedRange" min="1" max="20" value="8" step="1"
+               aria-describedby="speedValue">
+        <span class="control-value" id="speedValue">8</span>
+      </div>
+
+      <div class="control-row">
+        <label class="control-name" for="animDirectionRange">Direction</label>
+        <input type="range" id="animDirectionRange" min="0" max="1" value="1" step="1"
+               aria-describedby="animDirectionValue">
+        <span class="control-value" id="animDirectionValue">Forward</span>
+      </div>
+    </section>
+
+    <!-- ============ COLOUR INFORMATION ============ -->
+    <section class="panel colours-panel" aria-label="Generated colours">
+      <div class="panel-label">Colours</div>
+      <ul class="colour-list" id="colourList"><!-- populated by JS --></ul>
+    </section>
+
+    <!-- ============ CSS OUTPUT ============ -->
+    <section class="panel css-panel" aria-label="Generated CSS">
+      <div class="panel-label">CSS output</div>
+      <pre class="css-output" id="cssOutput" tabindex="0">background: linear-gradient(135deg, #cccccc 0%, #999999 100%);</pre>
+      <button type="button" class="copy-css-btn" id="copyCssBtn">Copy CSS</button>
+      <p class="copy-feedback" id="cssCopyFeedback" role="status" aria-live="polite"></p>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>No accounts, no servers, no tracking — everything runs in this tab.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
