@@ -51,7 +51,9 @@
   const state = {
     hue: 260,            // 0-360, angle on the wheel
     sat: 55,              // 0-100, distance from wheel centre
-    lightness: 55,         // fixed per-colour base lightness
+    lightness: 55,    // fixed per-colour base lightness
+     mouseX: 210,
+  mouseY: 210,
     mode: "triad",          // "triad" | "quad"
     harmonyDistance: 40,            // multiplier on the default angular separation
     gradientType: "linear",   // "linear" | "radial" | "conic"
