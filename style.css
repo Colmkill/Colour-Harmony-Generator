@@ -285,6 +285,7 @@ body {
 
 .segmented {
   display: inline-flex;
+  flex-wrap: wrap;
   background: var(--track);
   border-radius: 999px;
   padding: 3px;
