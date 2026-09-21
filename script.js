@@ -36,6 +36,9 @@
   const forceMotionBtn  = document.getElementById("forceMotionBtn");
   const btnAnimDrift    = document.getElementById("btnAnimDrift");
   const btnAnimPoints   = document.getElementById("btnAnimPoints");
+   /////////////////////////
+  const btnAnimPointsDrift   = document.getElementById("btnAnimPointsDrift");
+   ////////////////////////
   const speedRange      = document.getElementById("speedRange");
   const speedValueEl    = document.getElementById("speedValue");
   const animDirectionRange = document.getElementById("animDirectionRange");
@@ -676,12 +679,18 @@
     btnAnimDrift.setAttribute("aria-pressed", String(style === "drift"));
     btnAnimPoints.classList.toggle("is-active", style === "points");
     btnAnimPoints.setAttribute("aria-pressed", String(style === "points"));
+     //////////////////////////////
+   btnAnimPointsDrift.classList.toggle("is-active", style === "pointsDrift");
+    btnAnimPointsDrift.setAttribute("aria-pressed", String(style === "pointsDrift"));
+     //////////////////////////
     render();
   }
 
   btnAnimDrift.addEventListener("click", () => setAnimStyle("drift"));
   btnAnimPoints.addEventListener("click", () => setAnimStyle("points"));
-
+   ///////////////////////
+  btnAnimPointsDrift.addEventListener("click", () => setAnimStyle("pointsDrift"));
+//////////////////////////
   speedRange.addEventListener("input", () => {
     state.animation.speed = Number(speedRange.value);
     speedValueEl.textContent = speedRange.value;
