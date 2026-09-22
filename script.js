@@ -36,21 +36,22 @@
   const forceMotionBtn  = document.getElementById("forceMotionBtn");
   const btnAnimDrift    = document.getElementById("btnAnimDrift");
   const btnAnimPoints   = document.getElementById("btnAnimPoints");
-
+  const btnAnimPointsDrift = document.getElementById("btnAnimPointsDrift");
   const speedRange      = document.getElementById("speedRange");
   const speedValueEl    = document.getElementById("speedValue");
   const animDirectionRange = document.getElementById("animDirectionRange");
   const animDirectionValueEl = document.getElementById("animDirectionValue");
 
-  // The "Points" animation cycles the tile's background-colour through the
-  // current harmony colours. Its @keyframes depend on how many colours
-  // there are and what their hex values are right now, so we generate the
-  // rule in JS and keep it in one <style> tag that we update on every
-  // render, rather than trying to express it as static CSS.
+  // "Points" and "Points drift" both need @keyframes that depend on how
+  // many harmony colours there are and what their current hex/hue values
+  // are, so we generate both rules in JS and keep them in one <style> tag
+  // that's refreshed on every render, rather than trying to express them
+  // as static CSS.
   const pointsKeyframesStyle = document.createElement("style");
   pointsKeyframesStyle.id = "pointsKeyframesStyle";
   document.head.appendChild(pointsKeyframesStyle);
   const POINTS_KEYFRAMES_NAME = "pointsCycle";
+  const POINTS_DRIFT_KEYFRAMES_NAME = "pointsDriftHue";
 
   const colourListEl    = document.getElementById("colourList");
   const cssOutputEl     = document.getElementById("cssOutput");
@@ -325,13 +326,43 @@
     return `@keyframes ${name} {\n${lines.join("\n")}\n}`;
   }
 
+  // The shortest signed angular distance (in degrees, -180..180) from one
+  // hue to another. Used so a hue-rotate() step always takes the short way
+  // round the wheel rather than always spinning the long way — the size of
+  // that step is then a direct read of how far apart two colours actually
+  // are, which is exactly what should drive how big the drift looks.
+  function shortestHueDelta(fromHue, toHue) {
+    return (((toHue - fromHue + 540) % 360) - 180);
+  }
+
+  // Builds a @keyframes rule for the "Points drift" style: same technique
+  // as the static hueDrift rule (a filter: hue-rotate() sweep, so colours
+  // blend through real hue-space instead of muddying through RGB), but
+  // instead of an arbitrary fixed 0→360° sweep, each stop's rotation is the
+  // real angular distance from the first harmony colour's hue to each
+  // other selected colour's hue — i.e. exactly how far apart those points
+  // sit once they're placed around the mouse. Close points barely move the
+  // filter; distant points swing it further. Always loops back to 0° (the
+  // first colour, undoing any drift) at 100%.
+  function buildPointsDriftKeyframes(colours, name) {
+    const n = colours.length;
+    const baseHue = colours[0].hue;
+    const lines = colours.map((c, i) => {
+      const pct = Math.round((i / n) * 100);
+      const delta = i === 0 ? 0 : shortestHueDelta(baseHue, c.hue);
+      return `  ${pct}% { filter: hue-rotate(${delta.toFixed(1)}deg); }`;
+    });
+    lines.push(`  100% { filter: hue-rotate(0deg); }`);
+    return `@keyframes ${name} {\n${lines.join("\n")}\n}`;
+  }
+
   // Applies the generated gradient (and animation state) to the preview tile.
   function updatePreview(colours) {
     const placeholder = previewTile.querySelector(".tile-placeholder");
     if (placeholder) placeholder.remove();
 
     // Speed 1 (slow) -> 14s cycle, speed 20 (fast) -> ~1.5s cycle. Shared by
-    // both animation styles.
+    // all animation styles.
     const duration = (21 - state.animation.speed) * 0.7;
     previewTile.style.setProperty("--anim-duration", `${duration.toFixed(2)}s`);
     previewTile.style.setProperty(
@@ -339,26 +370,36 @@
       state.animation.forward ? "normal" : "reverse"
     );
 
-    const usingPoints = state.animation.enabled && state.animation.style === "points";
+    const style = state.animation.style;
+    const usingPoints = state.animation.enabled && style === "points";
+    const usingPointsDrift = state.animation.enabled && style === "pointsDrift";
 
     previewTile.classList.toggle("force-motion", state.animation.forceMotion);
 
     const systemReducesMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     reducedMotionNote.hidden = !(state.animation.enabled && systemReducesMotion && !state.animation.forceMotion);
 
+    // Keep both dynamic keyframe rules current regardless of which style is
+    // active — cheap, and means switching styles never shows a stale frame.
+    pointsKeyframesStyle.textContent =
+      buildPointCycleKeyframes(colours, POINTS_KEYFRAMES_NAME) +
+      "\n" +
+      buildPointsDriftKeyframes(colours, POINTS_DRIFT_KEYFRAMES_NAME);
+
     if (usingPoints) {
-      // Keep the keyframes fresh with the current harmony colours, then let
-      // CSS animate background-colour through them — the gradient/type/
-      // direction controls are set aside for this style since it shows one
-      // colour at a time rather than a blend of all of them.
-      pointsKeyframesStyle.textContent = buildPointCycleKeyframes(colours, POINTS_KEYFRAMES_NAME);
-      previewTile.style.backgroundColor = colours[0].hex;
+      // Shows one harmony colour at a time and crossfades to the next — the
+      // gradient/type/direction controls are set aside for this style since
+      // it displays a single colour rather than a blend of all of them.
+      previewTile.style.background = colours[0].hex;
       previewTile.classList.add("is-animating-points");
-      previewTile.classList.remove("is-animating-drift");
+      previewTile.classList.remove("is-animating-drift", "is-animating-pointsdrift");
     } else {
+      // Both the static/off state, "Hue drift" and "Points drift" keep the
+      // full gradient visible — only the filter animates (or doesn't).
       const gradient = generateGradient(colours, state.gradientType, state.direction);
       previewTile.style.background = gradient;
-      previewTile.classList.toggle("is-animating-drift", state.animation.enabled);
+      previewTile.classList.toggle("is-animating-drift", state.animation.enabled && style === "drift");
+      previewTile.classList.toggle("is-animating-pointsdrift", usingPointsDrift);
       previewTile.classList.remove("is-animating-points");
     }
   }
@@ -383,13 +424,16 @@
 
     if (state.animation.enabled) {
       const duration = ((21 - state.animation.speed) * 0.7).toFixed(2);
-      const direction = state.animation.forward ? "normal" : "reverse";
+      const animDirection = state.animation.forward ? "normal" : "reverse";
 
       if (state.animation.style === "points") {
         const keyframes = buildPointCycleKeyframes(colours, "points-cycle");
-        cssBody = `background-color: ${colours[0].hex};\nanimation: points-cycle ${duration}s ease-in-out infinite ${direction};\n\n${keyframes}`;
+        cssBody = `background-color: ${colours[0].hex};\nanimation: points-cycle ${duration}s ease-in-out infinite ${animDirection};\n\n${keyframes}`;
+      } else if (state.animation.style === "pointsDrift") {
+        const keyframes = buildPointsDriftKeyframes(colours, "points-drift-hue");
+        cssBody += `\n\n/* animation: hue-rotate sweep sized to the real distance between the\n   selected harmony colours, instead of a fixed 0-360° sweep */\nfilter: hue-rotate(0deg);\nanimation: points-drift-hue ${duration}s linear infinite ${animDirection};\n\n${keyframes}`;
       } else {
-        cssBody += `\n\n/* animation */\nfilter: hue-rotate(0deg);\nanimation: hue-drift ${duration}s linear infinite ${direction};\n\n@keyframes hue-drift {\n  from { filter: hue-rotate(0deg); }\n  to   { filter: hue-rotate(360deg); }\n}`;
+        cssBody += `\n\n/* animation */\nfilter: hue-rotate(0deg);\nanimation: hue-drift ${duration}s linear infinite ${animDirection};\n\n@keyframes hue-drift {\n  from { filter: hue-rotate(0deg); }\n  to   { filter: hue-rotate(360deg); }\n}`;
       }
     }
 
@@ -677,13 +721,15 @@
     btnAnimDrift.setAttribute("aria-pressed", String(style === "drift"));
     btnAnimPoints.classList.toggle("is-active", style === "points");
     btnAnimPoints.setAttribute("aria-pressed", String(style === "points"));
-
+    btnAnimPointsDrift.classList.toggle("is-active", style === "pointsDrift");
+    btnAnimPointsDrift.setAttribute("aria-pressed", String(style === "pointsDrift"));
     render();
   }
 
   btnAnimDrift.addEventListener("click", () => setAnimStyle("drift"));
   btnAnimPoints.addEventListener("click", () => setAnimStyle("points"));
- 
+  btnAnimPointsDrift.addEventListener("click", () => setAnimStyle("pointsDrift"));
+
   speedRange.addEventListener("input", () => {
     state.animation.speed = Number(speedRange.value);
     speedValueEl.textContent = speedRange.value;
