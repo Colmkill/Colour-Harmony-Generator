@@ -42,16 +42,15 @@
   const animDirectionRange = document.getElementById("animDirectionRange");
   const animDirectionValueEl = document.getElementById("animDirectionValue");
 
-  // "Points" and "Points drift" both need @keyframes that depend on how
-  // many harmony colours there are and what their current hex/hue values
-  // are, so we generate both rules in JS and keep them in one <style> tag
-  // that's refreshed on every render, rather than trying to express them
-  // as static CSS.
+  // "Points" needs @keyframes that depend on how many harmony colours
+  // there are and what their current hex values are, so we generate the
+  // rule in JS and keep it in a <style> tag that's refreshed on every
+  // render, rather than trying to express it as static CSS. (Points drift
+  // doesn't use CSS keyframes at all — see tickPointsDrift().)
   const pointsKeyframesStyle = document.createElement("style");
   pointsKeyframesStyle.id = "pointsKeyframesStyle";
   document.head.appendChild(pointsKeyframesStyle);
   const POINTS_KEYFRAMES_NAME = "pointsCycle";
-  const POINTS_DRIFT_KEYFRAMES_NAME = "pointsDriftHue";
 
   const colourListEl    = document.getElementById("colourList");
   const cssOutputEl     = document.getElementById("cssOutput");
@@ -326,43 +325,12 @@
     return `@keyframes ${name} {\n${lines.join("\n")}\n}`;
   }
 
-  // The shortest signed angular distance (in degrees, -180..180) from one
-  // hue to another. Used so a hue-rotate() step always takes the short way
-  // round the wheel rather than always spinning the long way — the size of
-  // that step is then a direct read of how far apart two colours actually
-  // are, which is exactly what should drive how big the drift looks.
-  function shortestHueDelta(fromHue, toHue) {
-    return (((toHue - fromHue + 540) % 360) - 180);
-  }
-
-  // Builds a @keyframes rule for the "Points drift" style: same technique
-  // as the static hueDrift rule (a filter: hue-rotate() sweep, so colours
-  // blend through real hue-space instead of muddying through RGB), but
-  // instead of an arbitrary fixed 0→360° sweep, each stop's rotation is the
-  // real angular distance from the first harmony colour's hue to each
-  // other selected colour's hue — i.e. exactly how far apart those points
-  // sit once they're placed around the mouse. Close points barely move the
-  // filter; distant points swing it further. Always loops back to 0° (the
-  // first colour, undoing any drift) at 100%.
-  function buildPointsDriftKeyframes(colours, name) {
-    const n = colours.length;
-    const baseHue = colours[0].hue;
-    const lines = colours.map((c, i) => {
-      const pct = Math.round((i / n) * 100);
-      const delta = i === 0 ? 0 : shortestHueDelta(baseHue, c.hue);
-      return `  ${pct}% { filter: hue-rotate(${delta.toFixed(1)}deg); }`;
-    });
-    lines.push(`  100% { filter: hue-rotate(0deg); }`);
-    return `@keyframes ${name} {\n${lines.join("\n")}\n}`;
-  }
-
-  // Applies the generated gradient (and animation state) to the preview tile.
-  function updatePreview(colours) {
-    const placeholder = previewTile.querySelector(".tile-placeholder");
-    if (placeholder) placeholder.remove();
-
-    // Speed 1 (slow) -> 14s cycle, speed 20 (fast) -> ~1.5s cycle. Shared by
-    // all animation styles.
+  // Shared bookkeeping that must stay current regardless of which style is
+  // driving the tile right now: the CSS custom properties the CSS-based
+  // styles read, and the reduced-motion notice. Always called from
+  // render() so it never gets out of sync with whichever path (the normal
+  // static/CSS path, or the Points drift rAF loop) is actually painting.
+  function updateAnimationMeta() {
     const duration = (21 - state.animation.speed) * 0.7;
     previewTile.style.setProperty("--anim-duration", `${duration.toFixed(2)}s`);
     previewTile.style.setProperty(
@@ -370,21 +338,29 @@
       state.animation.forward ? "normal" : "reverse"
     );
 
-    const style = state.animation.style;
-    const usingPoints = state.animation.enabled && style === "points";
-    const usingPointsDrift = state.animation.enabled && style === "pointsDrift";
-
     previewTile.classList.toggle("force-motion", state.animation.forceMotion);
 
     const systemReducesMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     reducedMotionNote.hidden = !(state.animation.enabled && systemReducesMotion && !state.animation.forceMotion);
+  }
 
-    // Keep both dynamic keyframe rules current regardless of which style is
-    // active — cheap, and means switching styles never shows a stale frame.
-    pointsKeyframesStyle.textContent =
-      buildPointCycleKeyframes(colours, POINTS_KEYFRAMES_NAME) +
-      "\n" +
-      buildPointsDriftKeyframes(colours, POINTS_DRIFT_KEYFRAMES_NAME);
+  // Applies the static/CSS-driven preview: the plain gradient, or that same
+  // gradient with the Hue drift filter animating on top of it, or the
+  // Points solid-colour cycle. Points drift is deliberately absent here —
+  // while it's actually running it's painted frame-by-frame by
+  // tickPointsDrift() instead (see below), because its geometry can't be
+  // expressed as a CSS-only animation.
+  function updatePreview(colours) {
+    const placeholder = previewTile.querySelector(".tile-placeholder");
+    if (placeholder) placeholder.remove();
+
+    const style = state.animation.style;
+    const usingPoints = state.animation.enabled && style === "points";
+
+    // Keep the dynamic Points keyframes current regardless of which style
+    // is active — cheap, and means switching to Points never shows a stale
+    // frame from a previous colour arrangement.
+    pointsKeyframesStyle.textContent = buildPointCycleKeyframes(colours, POINTS_KEYFRAMES_NAME);
 
     if (usingPoints) {
       // Shows one harmony colour at a time and crossfades to the next — the
@@ -392,14 +368,14 @@
       // it displays a single colour rather than a blend of all of them.
       previewTile.style.background = colours[0].hex;
       previewTile.classList.add("is-animating-points");
-      previewTile.classList.remove("is-animating-drift", "is-animating-pointsdrift");
+      previewTile.classList.remove("is-animating-drift");
     } else {
-      // Both the static/off state, "Hue drift" and "Points drift" keep the
-      // full gradient visible — only the filter animates (or doesn't).
+      // The static/off state, "Hue drift", and a paused "Points drift"
+      // (motion off, or reduced-motion blocking it) all show the plain
+      // gradient — only Hue drift's filter animates on top of it.
       const gradient = generateGradient(colours, state.gradientType, state.direction);
       previewTile.style.background = gradient;
       previewTile.classList.toggle("is-animating-drift", state.animation.enabled && style === "drift");
-      previewTile.classList.toggle("is-animating-pointsdrift", usingPointsDrift);
       previewTile.classList.remove("is-animating-points");
     }
   }
@@ -430,14 +406,96 @@
         const keyframes = buildPointCycleKeyframes(colours, "points-cycle");
         cssBody = `background-color: ${colours[0].hex};\nanimation: points-cycle ${duration}s ease-in-out infinite ${animDirection};\n\n${keyframes}`;
       } else if (state.animation.style === "pointsDrift") {
-        const keyframes = buildPointsDriftKeyframes(colours, "points-drift-hue");
-        cssBody += `\n\n/* animation: hue-rotate sweep sized to the real distance between the\n   selected harmony colours, instead of a fixed 0-360° sweep */\nfilter: hue-rotate(0deg);\nanimation: points-drift-hue ${duration}s linear infinite ${animDirection};\n\n${keyframes}`;
+        cssBody += `\n\n/* animation: "Points drift" rotates the harmony points themselves\n   around the mouse (see calculateHarmonyPoints()) and resamples their\n   colours every frame — a live geometric rotation, not a filter or\n   colour transition, so it can't be expressed as static CSS. Open this\n   tool and use Points drift directly to reproduce the effect. */`;
       } else {
         cssBody += `\n\n/* animation */\nfilter: hue-rotate(0deg);\nanimation: hue-drift ${duration}s linear infinite ${animDirection};\n\n@keyframes hue-drift {\n  from { filter: hue-rotate(0deg); }\n  to   { filter: hue-rotate(360deg); }\n}`;
       }
     }
 
     return cssBody;
+  }
+
+  /* ----------------------------------------------------------------------
+     Points drift — geometric rotation of the harmony arrangement
+     -------------------------------------------------------------------- */
+  // Unlike Hue drift (a CSS filter) and Points (a CSS background-colour
+  // cycle), Points drift has to actually recompute the harmony geometry on
+  // every frame: the mouse stays the fixed pivot, and the whole Triad/Quad
+  // arrangement — still the selected spacing, still `pointDistance` out
+  // from the mouse — spins around it. That can't be expressed as a CSS
+  // keyframe (it's not interpolating between colours, it's re-deriving
+  // them from rotating positions), so it's driven by requestAnimationFrame
+  // instead, reusing the exact same calculateHarmonyPoints() the rest of
+  // the app uses. currentColours (the real, un-rotated arrangement) still
+  // drives the colour list and CSS output the whole time — only the wheel
+  // markers and the tile see the rotated version.
+
+  let pointsDriftRAF = null;
+  let pointsDriftStartTime = null;
+
+  function reducedMotionActive() {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches && !state.animation.forceMotion;
+  }
+
+  function pointsDriftShouldRun() {
+    return state.animation.enabled && state.animation.style === "pointsDrift" && !reducedMotionActive();
+  }
+
+  function stopPointsDriftLoop() {
+    if (pointsDriftRAF !== null) {
+      cancelAnimationFrame(pointsDriftRAF);
+      pointsDriftRAF = null;
+    }
+    pointsDriftStartTime = null;
+  }
+
+  function tickPointsDrift(now) {
+    if (!pointsDriftShouldRun()) {
+      // Conditions changed since this frame was scheduled (motion turned
+      // off, style switched, reduced-motion kicked in, ...) — stop and
+      // hand back to the normal static/CSS-driven path so the tile and
+      // markers settle on the real, un-rotated arrangement.
+      stopPointsDriftLoop();
+      drawMarkers(currentColours, state.mouseX, state.mouseY);
+      updatePreview(currentColours);
+      return;
+    }
+
+    if (pointsDriftStartTime === null) pointsDriftStartTime = now;
+
+    // Same speed scale as the other two styles: one full 360° rotation
+    // takes this many seconds.
+    const duration = (21 - state.animation.speed) * 0.7;
+    const elapsedSeconds = (now - pointsDriftStartTime) / 1000;
+    const progress = (elapsedSeconds / duration) % 1;
+    const angle = progress * 360 * (state.animation.forward ? 1 : -1);
+    const effectiveDirection = ((state.pointDirection + angle) % 360 + 360) % 360;
+
+    // The actual geometric rotation: same mouse pivot, same mode, same
+    // distance — only the direction offset is spinning.
+    const rotatedColours = calculateHarmonyPoints(
+      state.mouseX,
+      state.mouseY,
+      state.lightness,
+      state.mode,
+      effectiveDirection,
+      state.pointDistance
+    );
+
+    drawMarkers(rotatedColours, state.mouseX, state.mouseY);
+    const placeholder = previewTile.querySelector(".tile-placeholder");
+    if (placeholder) placeholder.remove();
+    previewTile.classList.remove("is-animating-drift", "is-animating-points");
+    previewTile.style.background = generateGradient(rotatedColours, state.gradientType, state.direction);
+
+    pointsDriftRAF = requestAnimationFrame(tickPointsDrift);
+  }
+
+  function startPointsDriftLoopIfNeeded() {
+    if (pointsDriftRAF === null) {
+      pointsDriftStartTime = null;
+      pointsDriftRAF = requestAnimationFrame(tickPointsDrift);
+    }
   }
 
   /* ----------------------------------------------------------------------
@@ -510,8 +568,25 @@
       state.pointDistance
     );
 
-    drawMarkers(currentColours, state.mouseX, state.mouseY);
-    updatePreview(currentColours);
+    // Shared bookkeeping (CSS custom properties, reduced-motion notice)
+    // regardless of which path paints the tile.
+    updateAnimationMeta();
+
+    if (pointsDriftShouldRun()) {
+      // Hand the wheel markers and tile over to the rotation loop; it reads
+      // live state every frame, so it doesn't need restarting when the
+      // mouse moves or a slider changes — it just picks up the new
+      // geometry on its next tick.
+      startPointsDriftLoopIfNeeded();
+      previewTile.classList.remove("is-animating-drift", "is-animating-points");
+    } else {
+      stopPointsDriftLoop();
+      drawMarkers(currentColours, state.mouseX, state.mouseY);
+      updatePreview(currentColours);
+    }
+
+    // The colour list and CSS output always reflect the real, un-rotated
+    // arrangement — never the animation's current frame.
     updateColourInformation(currentColours);
     cssOutputEl.textContent = generateCSS(currentColours, state.gradientType, state.direction);
   }
