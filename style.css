@@ -216,9 +216,22 @@ body {
   animation-direction: var(--anim-direction, normal);
 }
 
+/* Points drift: same technique as Hue drift (a filter sweep over the full
+   gradient, so it never touches background-image) but the sweep's degrees
+   are generated in JS from the actual selected harmony colours — see
+   buildPointsDriftKeyframes() and #pointsKeyframesStyle. */
+.tile.is-animating-pointsdrift {
+  animation-name: pointsDriftHue;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-duration: var(--anim-duration, 6s);
+  animation-direction: var(--anim-direction, normal);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tile.is-animating-drift:not(.force-motion),
-  .tile.is-animating-points:not(.force-motion) { animation: none; }
+  .tile.is-animating-points:not(.force-motion),
+  .tile.is-animating-pointsdrift:not(.force-motion) { animation: none; }
 }
 
 .reduced-motion-note {
