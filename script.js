@@ -53,6 +53,13 @@
   document.head.appendChild(pointsKeyframesStyle);
   const POINTS_KEYFRAMES_NAME = "pointsCycle";
 
+  // Names used only in the copy-ready CSS export (generateCSS() below) —
+  // deliberately generic/stable rather than exposing internal names like
+  // POINTS_KEYFRAMES_NAME, since the export is meant to be pasted into
+  // someone else's project.
+  const EXPORT_CLASS_NAME = "colour-harmony";
+  const EXPORT_KEYFRAME_NAME = "colour-harmony-animation";
+
   const colourListEl    = document.getElementById("colourList");
   const cssOutputEl     = document.getElementById("cssOutput");
   const copyCssBtn      = document.getElementById("copyCssBtn");
@@ -338,6 +345,43 @@
     return `@keyframes ${name} {\n${lines.join("\n")}\n}`;
   }
 
+  // Points drift's export: ordinary CSS can't run calculateHarmonyPoints()
+  // itself, so the rotation is pre-computed here, once, while generating
+  // the CSS — sampling the same geometry the live rAF loop uses
+  // (tickPointsDrift()) at regular angles around a full 360° turn, and
+  // baking each sample's gradient into one keyframe. The result is pure,
+  // static CSS: no JavaScript dependency, just a lot of precomputed frames.
+  // ~15° per sample is fine enough to read as continuous rotation without
+  // producing an unreasonably large stylesheet.
+  function buildPointsDriftExportKeyframes(name) {
+    const sampleCount = 24; // 360 / 24 = 15° per step
+    const lines = [];
+
+    for (let i = 0; i <= sampleCount; i++) {
+      // i === sampleCount lands back on angle 360°, i.e. the same
+      // arrangement as i === 0 — the loop closes with no visible seam.
+      const angle = (360 / sampleCount) * i;
+      const effectiveDirection = ((state.pointDirection + angle) % 360 + 360) % 360;
+
+      const sampledColours = calculateHarmonyPoints(
+        state.mouseX,
+        state.mouseY,
+        state.lightness,
+        state.mode,
+        effectiveDirection,
+        state.pointDistance
+      );
+
+      // Gradient direction is deliberately NOT rotated here — only the
+      // harmony points' positions (via effectiveDirection above) are.
+      const gradient = generateGradient(sampledColours, state.gradientType, state.direction);
+      const pct = Math.round((i / sampleCount) * 10000) / 100; // up to 2dp, no trailing zeros
+      lines.push(`  ${pct}% { background: ${gradient}; }`);
+    }
+
+    return `@keyframes ${name} {\n${lines.join("\n")}\n}`;
+  }
+
   // Shared bookkeeping that must stay current regardless of which style is
   // driving the tile right now: the CSS custom properties the CSS-based
   // styles read, and the reduced-motion notice. Always called from
@@ -393,39 +437,61 @@
     }
   }
 
-  // Builds the full, copy-ready CSS block shown in the output panel.
+  // Builds a complete, portable CSS export of the current state: a single
+  // ".colour-harmony" rule (background, or background + animation), plus a
+  // matching "@keyframes colour-harmony-animation" when animation is on.
+  // It reuses the exact same functions the live preview uses
+  // (generateGradient, buildPointCycleKeyframes, calculateHarmonyPoints)
+  // so the two never drift apart — but the *result* is plain CSS with no
+  // dependency on this app, its DOM, or any JavaScript: paste it into any
+  // project as-is.
   function generateCSS(colours, type, direction) {
     const gradient = generateGradient(colours, type, direction);
-    const stops = getColourStops(colours.length);
+    const duration = ((21 - state.animation.speed) * 0.7).toFixed(2);
+    const animDirection = state.animation.forward ? "normal" : "reverse";
 
-    const stopLines = colours
-      .map((c, i) => `    ${c.hex} ${stops[i]}%${i < colours.length - 1 ? "," : ""}`)
-      .join("\n");
+    let ruleBody;
+    let keyframesBlock = "";
 
-    let cssBody;
-    if (type === "radial") {
-      cssBody = `background: radial-gradient(\n    circle,\n${stopLines}\n);`;
-    } else if (type === "conic") {
-      cssBody = `background: conic-gradient(\n    from ${direction}deg,\n${stopLines}\n);`;
+    if (!state.animation.enabled) {
+      ruleBody = `  background: ${gradient};`;
+    } else if (state.animation.style === "points") {
+      // Solid colour cycling through each harmony point in turn — the
+      // gradient/type/direction controls are set aside for this style, so
+      // the base declaration is a plain background-color, same as the live
+      // preview.
+      ruleBody =
+        `  background-color: ${colours[0].hex};\n` +
+        `  animation: ${EXPORT_KEYFRAME_NAME} ${duration}s ease-in-out infinite ${animDirection};`;
+      keyframesBlock = buildPointCycleKeyframes(colours, EXPORT_KEYFRAME_NAME);
+    } else if (state.animation.style === "pointsDrift") {
+      // A real, sampled rotation of the harmony geometry (see
+      // buildPointsDriftExportKeyframes) rather than a hue-rotate filter —
+      // the base declaration is the plain gradient so the element still
+      // looks right even before/without the animation applying.
+      ruleBody =
+        `  background: ${gradient};\n` +
+        `  animation: ${EXPORT_KEYFRAME_NAME} ${duration}s linear infinite ${animDirection};`;
+      keyframesBlock = buildPointsDriftExportKeyframes(EXPORT_KEYFRAME_NAME);
     } else {
-      cssBody = `background: linear-gradient(\n    ${direction}deg,\n${stopLines}\n);`;
+      // "drift": the gradient stays put, a hue-rotate filter sweeps over it.
+      ruleBody =
+        `  background: ${gradient};\n` +
+        `  filter: hue-rotate(0deg);\n` +
+        `  animation: ${EXPORT_KEYFRAME_NAME} ${duration}s linear infinite ${animDirection};`;
+      keyframesBlock =
+        `@keyframes ${EXPORT_KEYFRAME_NAME} {\n` +
+        `  from { filter: hue-rotate(0deg); }\n` +
+        `  to   { filter: hue-rotate(360deg); }\n` +
+        `}`;
     }
 
-    if (state.animation.enabled) {
-      const duration = ((21 - state.animation.speed) * 0.7).toFixed(2);
-      const animDirection = state.animation.forward ? "normal" : "reverse";
-
-      if (state.animation.style === "points") {
-        const keyframes = buildPointCycleKeyframes(colours, "points-cycle");
-        cssBody = `background-color: ${colours[0].hex};\nanimation: points-cycle ${duration}s ease-in-out infinite ${animDirection};\n\n${keyframes}`;
-      } else if (state.animation.style === "pointsDrift") {
-        cssBody += `\n\n/* animation: "Points drift" rotates the harmony points themselves\n   around the mouse (see calculateHarmonyPoints()) and resamples their\n   colours every frame — a live geometric rotation, not a filter or\n   colour transition, so it can't be expressed as static CSS. Open this\n   tool and use Points drift directly to reproduce the effect. */`;
-      } else {
-        cssBody += `\n\n/* animation */\nfilter: hue-rotate(0deg);\nanimation: hue-drift ${duration}s linear infinite ${animDirection};\n\n@keyframes hue-drift {\n  from { filter: hue-rotate(0deg); }\n  to   { filter: hue-rotate(360deg); }\n}`;
-      }
+    let css = `/* Colour Harmony Generator export */\n\n.${EXPORT_CLASS_NAME} {\n${ruleBody}\n}`;
+    if (keyframesBlock) {
+      css += `\n\n/* Animation */\n\n${keyframesBlock}`;
     }
 
-    return cssBody;
+    return css;
   }
 
   /* ----------------------------------------------------------------------
