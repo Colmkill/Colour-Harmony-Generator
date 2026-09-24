@@ -16,6 +16,7 @@
   const wheelHint      = document.getElementById("wheelHint");
   const previewTile    = document.getElementById("previewTile");
 
+  const btnDual        = document.getElementById("btnDual");
   const btnTriad       = document.getElementById("btnTriad");
   const btnQuad        = document.getElementById("btnQuad");
   const pointDirectionRange = document.getElementById("pointDirectionRange");
@@ -88,6 +89,7 @@
   // user's Point direction offset is applied. These place the secondary
   // points evenly around the primary — they no longer determine hue.
   const HARMONY_LAYOUT_ANGLES = {
+    dual: [0, 180],
     triad: [0, 120, 240],
     quad: [0, 90, 180, 270]
   };
@@ -145,6 +147,14 @@
     return { hue: angle, sat, lightness: state.lightness };
   }
 
+  // Dual: two layout angles, 180° apart, plus the user's direction offset —
+  // same pattern as Triad/Quad below.
+  function calculateDual(directionOffset) {
+    return HARMONY_LAYOUT_ANGLES.dual.map(
+      (a) => ((a + directionOffset) % 360 + 360) % 360
+    );
+  }
+
   // Triad: three layout angles, 120° apart, plus the user's direction
   // offset. These are *positions* around the mouse, not hues — the colour
   // at each position is sampled from the wheel afterwards.
@@ -171,7 +181,10 @@
   // on a real, predictable colour (including green) instead of a
   // formula-derived one that can drift away from the visible wheel.
   function calculateHarmonyPoints(mouseX, mouseY, lightness, mode, directionOffset, distance) {
-    const layoutAngles = mode === "quad" ? calculateQuad(directionOffset) : calculateTriad(directionOffset);
+    const layoutAngles =
+      mode === "quad" ? calculateQuad(directionOffset) :
+      mode === "dual" ? calculateDual(directionOffset) :
+      calculateTriad(directionOffset);
     const maxX = wheelCanvas.width;
     const maxY = wheelCanvas.height;
 
@@ -684,6 +697,8 @@
 
   function setMode(mode) {
     state.mode = mode;
+    btnDual.classList.toggle("is-active", mode === "dual");
+    btnDual.setAttribute("aria-pressed", String(mode === "dual"));
     btnTriad.classList.toggle("is-active", mode === "triad");
     btnTriad.setAttribute("aria-pressed", String(mode === "triad"));
     btnQuad.classList.toggle("is-active", mode === "quad");
@@ -691,6 +706,7 @@
     render();
   }
 
+  btnDual.addEventListener("click", () => setMode("dual"));
   btnTriad.addEventListener("click", () => setMode("triad"));
   btnQuad.addEventListener("click", () => setMode("quad"));
 
